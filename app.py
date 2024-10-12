@@ -10,6 +10,9 @@ from langchain.tools.retriever import create_retriever_tool
 from langchain import hub
 import os
 
+os.environ["EMB_MODEL"] = 'BAAI/bge-base-en-v1.5'
+os.environ["LLM_MODEL"] = 'gpt-3.5-turbo-0125'
+
 # Initialize prompt, embeddings and LLM
 prompt = hub.pull("hwchase17/openai-functions-agent")
 huggingface_embeddings = HuggingFaceBgeEmbeddings(model_name=os.environ.get("EMB_MODEL"), model_kwargs={'device': 'cpu'})
@@ -21,19 +24,31 @@ def sanitize_retriever_name(name):
 # Function to format URLs and create tools
 def format_url(urls):
     tools = []
-    with st.spinner("Processing URLs..."):  # Display loading message
-        for index, url in enumerate(urls):
-            loader = WebBaseLoader(url)
-            docs = loader.load()
-            retriever_name = sanitize_retriever_name(f"retriever_{index+1}")
-            documents = RecursiveCharacterTextSplitter(chunk_size=5000, chunk_overlap=100).split_documents(docs)
-            vector_store = Chroma(collection_name=retriever_name, embedding_function=huggingface_embeddings)
+    for index, url in enumerate(urls):
+        loader = WebBaseLoader(url)
+        docs = loader.load()
+        retriever_name = sanitize_retriever_name(f"retriever_{index+1}")
+        documents = RecursiveCharacterTextSplitter(chunk_size=5000, chunk_overlap=100).split_documents(docs)
+
+        # Create or use existing vector store
+        if 'vector_stores' not in st.session_state:
+            st.session_state.vector_stores = {}
+
+        if retriever_name not in st.session_state.vector_stores:
+            vector_store = Chroma(
+                collection_name=retriever_name, 
+                embedding_function=huggingface_embeddings, 
+                persist_directory="./chroma_data")
             vector_store.add_documents(documents=documents)
-            retriever = vector_store.as_retriever()
-            retriever_tool = create_retriever_tool(retriever, retriever_name, f"This is about {retriever_name}")
-            tools.append(retriever_tool)
+            st.session_state.vector_stores[retriever_name] = vector_store
+        else:
+            vector_store = st.session_state.vector_stores[retriever_name]
+
+        retriever = vector_store.as_retriever()
+        retriever_tool = create_retriever_tool(retriever, retriever_name, f"This is about {retriever_name}")
+        tools.append(retriever_tool)
     return tools
-    
+
 # Function to create agent executor
 def llm_with_agents(llm, tools, prompt):
     if llm is None:
@@ -77,6 +92,8 @@ if 'tools' not in st.session_state:
     st.session_state.tools = None
 if 'agent_executor' not in st.session_state:
     st.session_state.agent_executor = None
+if 'processing' not in st.session_state:
+    st.session_state.processing = False
 
 # Input for list of URLs
 url_input = st.text_area("Enter URLs (comma-separated)", "")
@@ -85,24 +102,31 @@ urls = [url.strip() for url in url_input.split(",")] if url_input else []
 # Input for query
 query = st.text_input("Enter your query", "")
 
-# Check if URLs have changed, and if so, reset the tools and agent executor
-if urls and urls != st.session_state.urls:
-    st.session_state.urls = urls  # Update stored URLs
-    st.session_state.tools = format_url(urls)  # Create new tools for the new URLs
-    st.session_state.agent_executor = llm_with_agents(llm, st.session_state.tools, prompt)  # Create new agent executor
+# Button to process URLs
+if st.button("Process URLs"):
+    if urls:
+        st.session_state.processing = True
+        st.session_state.urls = urls  # Update stored URLs
+        with st.spinner("Processing URLs..."):
+            st.session_state.tools = format_url(urls)  # Create new tools for the new URLs
+            st.session_state.agent_executor = llm_with_agents(llm, st.session_state.tools, prompt)  # Create new agent executor
+        st.session_state.processing = False
 
 # Display the "Processing" message when necessary
-if st.session_state.agent_executor:
+if st.session_state.agent_executor and not st.session_state.processing:
     if urls and query:
         if st.button("Get Answer"):
             with st.spinner("Processing..."):
                 output = get_answer(st.session_state.agent_executor, query)
                 if output:
                     st.write("Answer:")
-                    st.write(output)
+                    st.write(output["output"])
                 else:
                     st.error("No answer found.")
     else:
         st.info("Please provide both URLs and a query to get an answer.")
 else:
-    st.info("Waiting for agent executor to be ready...")
+    if st.session_state.processing:
+        st.info("Processing URLs, please wait...")
+    else:
+        st.info("Waiting for agent executor to be ready...")
