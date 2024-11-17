@@ -43,9 +43,10 @@ def format_url(urls):
             st.session_state.vector_stores[retriever_name] = vector_store
         else:
             vector_store = st.session_state.vector_stores[retriever_name]
-
+        
+        retriever_description = docs[0].page_content.replace("\n"," ")[:1000] # max length is 1024
         retriever = vector_store.as_retriever()
-        retriever_tool = create_retriever_tool(retriever, retriever_name, f"This is about {retriever_name}")
+        retriever_tool = create_retriever_tool(retriever, retriever_name, f"This is about {retriever_description}")
         tools.append(retriever_tool)
     return tools
 
