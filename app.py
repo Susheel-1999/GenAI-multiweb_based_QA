@@ -1,31 +1,82 @@
-import streamlit as st
-import re 
-from langchain_community.document_loaders import WebBaseLoader
-from langchain_community.embeddings import HuggingFaceBgeEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_chroma import Chroma
-from langchain_openai import ChatOpenAI
-from langchain.agents import create_openai_tools_agent, AgentExecutor
-from langchain.tools.retriever import create_retriever_tool
-from langchain import hub
 import os
+import streamlit as st
 
-os.environ["EMB_MODEL"] = 'BAAI/bge-base-en-v1.5'
-os.environ["LLM_MODEL"] = 'gpt-3.5-turbo-0125'
+from typing import List
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+from langchain_community.document_loaders import WebBaseLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_groq import ChatGroq
+from langchain.chains.conversation.memory import ConversationBufferWindowMemory
+from langchain.chains import RetrievalQA
+from langchain_core.tools import tool
+from langchain.agents import Tool
+from langchain_community.tools import DuckDuckGoSearchRun
+from langchain.agents import initialize_agent
 
-# Initialize prompt, embeddings and LLM
-prompt = hub.pull("hwchase17/openai-functions-agent")
-huggingface_embeddings = HuggingFaceBgeEmbeddings(model_name=os.environ.get("EMB_MODEL"), model_kwargs={'device': 'cpu'})
+# Set environment variables
+os.environ['HF_TOKEN'] = 'hf_ktNAbyGeQrtiGyapmjgKRSicInKelt'
+os.environ['GROQ_API_KEY'] = 'gsk_xeUMIUO3bTbUq8myHJ3gWGdyb3FYSaon7weqlh1BE3QD835Z'
 
-# Function to sanitize the retriever name with only lowercase a-z
-def sanitize_retriever_name(name):
-    return re.sub(r'[^a-z0-9]', '', name.lower())  # Remove any characters that are not a-z
+# Define embedding model
+model_name = 'sentence-transformers/all-mpnet-base-v2'
+model_kwargs = {'device': 'cpu'}
+encode_kwargs = {'normalize_embeddings': False}
+embedding = HuggingFaceEmbeddings(
+    model_name=model_name,
+    model_kwargs=model_kwargs,
+    encode_kwargs=encode_kwargs
+)
 
-# Function to format URLs and create tools
-def format_url(urls):
-    tools = []
-    for index, url in enumerate(urls):
+# Define persistent directory for Chroma
+persist_dir = "chroma_data"
+
+# Chat completion LLM
+llm = ChatGroq(
+    groq_api_key=os.environ.get("GROQ_API_KEY"),
+    model="mixtral-8x7b-32768",
+    temperature=0,
+    max_tokens=None,
+    timeout=None,
+    max_retries=2
+)
+
+# Conversational memory
+conversational_memory = ConversationBufferWindowMemory(
+    memory_key='chat_history',
+    k=5,
+    return_messages=True
+)
+
+# Function to process URLs
+def process_urls(urls:List) -> Chroma:
+    """Processes URLs by loading their content into a vector store."""
+
+    vector_store = Chroma(
+        collection_name="web-content",
+        embedding_function=embedding,
+        persist_directory=persist_dir
+    )
+    
+    for url in urls:
         loader = WebBaseLoader(url)
+<<<<<<< HEAD
+        web_contents = loader.load()
+        documents = RecursiveCharacterTextSplitter(
+            chunk_size=5000, chunk_overlap=100
+        ).split_documents(web_contents)
+        vector_store.add_documents(documents=documents)
+
+    return vector_store
+
+# Streamlit app setup
+st.set_page_config(page_title="URL chatbot")
+st.title("Chat with Webpages")
+st.caption(
+    "This tool allows you to input a list of URLs and ask queries related to their content. "
+    "It processes the web pages using an LLM and provides accurate answers based on the extracted information."
+)
+=======
         docs = loader.load()
         retriever_name = sanitize_retriever_name(f"retriever_{index+1}")
         documents = RecursiveCharacterTextSplitter(chunk_size=5000, chunk_overlap=100).split_documents(docs)
@@ -95,39 +146,85 @@ if 'agent_executor' not in st.session_state:
     st.session_state.agent_executor = None
 if 'processing' not in st.session_state:
     st.session_state.processing = False
+>>>>>>> abec57f336124ba0f5d6f524be5e1cdc44023e69
 
 # Input for list of URLs
 url_input = st.text_area("Enter URLs (comma-separated)", "")
 urls = [url.strip() for url in url_input.split(",")] if url_input else []
+st.session_state.urls = urls
+
+# Button to process URLs
+if st.button("Process URLs") and st.session_state.urls:
+    with st.spinner("Processing..."):
+        vector_store = process_urls(urls)
+
+        # Create retrieval QA chain
+        qa = RetrievalQA.from_chain_type(
+            return_source_documents=True,
+            llm=llm,
+            chain_type="stuff",
+            retriever=vector_store.as_retriever(search_kwargs={"k": 1}),
+            verbose=True
+        )
+
+        @tool
+        def input_url_info():
+            """Provides basic information about the input URLs."""
+            url_names = ", ".join(urls)
+            url_count = len(urls)
+            info = f"{url_names}\nTotal URLs: {url_count}"
+            return info
+
+        # Define tools
+        tools = [
+            Tool(
+                name="External Knowledge",
+                func=qa.invoke,
+                description=(
+                    "This tool uses knowledge fetched from the user-provided URLs. "
+                    "Use this for specific or pointed questions."
+                )
+            ),
+            Tool(
+                name="General Knowledge",
+                func=DuckDuckGoSearchRun().invoke,
+                description="Use this tool for generic questions."
+            ),
+            Tool(
+                name="Basic URL Info",
+                func=input_url_info,
+                description="Use this tool to get information about the input URLs."
+            )
+        ]
+
+        # Initialize agent
+        agent = initialize_agent(
+            agent="chat-conversational-react-description",
+            tools=tools,
+            llm=llm,
+            verbose=True,
+            max_iterations=3,
+            early_stopping_method="generate",
+            memory=conversational_memory
+        )
+        st.session_state.agent = agent
+else:
+    st.error("Please enter the URLs.")
 
 # Input for query
 query = st.text_input("Enter your query", "")
-
-# Button to process URLs
-if st.button("Process URLs"):
-    if urls:
-        st.session_state.processing = True
-        st.session_state.urls = urls  # Update stored URLs
-        with st.spinner("Processing URLs..."):
-            st.session_state.tools = format_url(urls)  # Create new tools for the new URLs
-            st.session_state.agent_executor = llm_with_agents(llm, st.session_state.tools, prompt)  # Create new agent executor
-        st.session_state.processing = False
-
-# Display the "Processing" message when necessary
-if st.session_state.agent_executor and not st.session_state.processing:
-    if urls and query:
-        if st.button("Get Answer"):
-            with st.spinner("Processing..."):
-                output = get_answer(st.session_state.agent_executor, query)
-                if output:
-                    st.write("Answer:")
-                    st.write(output["output"])
-                else:
-                    st.error("No answer found.")
+if st.button("Get Answer"):
+    if "agent" in st.session_state:
+        with st.spinner("Processing..."):
+            output = st.session_state.agent(query)
+            if output:
+                st.write("Answer:")
+                st.write(output["output"])
+            else:
+                st.error("No answer found.")
     else:
-        st.info("Please provide both URLs and a query to get an answer.")
-else:
-    if st.session_state.processing:
-        st.info("Processing URLs, please wait...")
-    else:
+<<<<<<< HEAD
+        st.error("Please process the URLs first.")
+=======
         st.info("Waiting for agent executor to be ready...")
+>>>>>>> abec57f336124ba0f5d6f524be5e1cdc44023e69
