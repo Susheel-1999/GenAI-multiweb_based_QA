@@ -218,6 +218,28 @@ Streamlit is an open-source Python library that makes it easy to create and shar
 # UI 
 ![image](https://github.com/user-attachments/assets/1f2bf726-d25c-4fc1-8a18-6980c839a67f)
 
+# Examples:
+1. Answer by using Tool 1 - External Knowledge
+   <br><i><b>UI - Output</b></i>:<br>
+   ![image](https://github.com/user-attachments/assets/9ddf9395-5922-4e62-ba9f-72edb21efd93)
+
+   <br><i><b>Verbose</b></i>:<br>
+   ![image](https://github.com/user-attachments/assets/2224a449-7c14-423e-94b4-4fb606b4b1b3)
+   
+2. Answer by using Tool 2 - General Knowledge
+   <br><i><b>UI - Output</b></i>:<br>
+   ![image](https://github.com/user-attachments/assets/21edb0e6-0cf9-4074-a9ed-6af57805eafe)
+
+   <br><i><b>Verbose</b></i>:
+   ![image](https://github.com/user-attachments/assets/63860b1a-80a9-4219-bd17-236959a359c4)
+
+3. Answer by using Tool 3 - Basic info about input url
+   <br><i><b>UI - Output</b></i>:<br>
+   ![image](https://github.com/user-attachments/assets/0bf6fa51-921a-47a8-9ecd-27321362fe8d)
+   <br><i><b>Verbose</b></i>:
+   ![image](https://github.com/user-attachments/assets/fc2b56c0-27d1-4e99-88df-9181c51227b3)
+
+
 # Reference:
 Langchain - https://python.langchain.com/docs/get_started/introduction  <br>
 OpenAI - https://platform.openai.com/docs/introduction <br>
