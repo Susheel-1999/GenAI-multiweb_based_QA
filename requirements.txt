@@ -7,3 +7,4 @@ sentence_transformers==3.3.1
 duckduckgo-search==7.2.1 
 streamlit==1.31.0
 beautifulsoup4==4.12.3
+python-dotenv

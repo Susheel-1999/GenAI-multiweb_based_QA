@@ -13,10 +13,22 @@ from langchain_core.tools import tool
 from langchain.agents import Tool
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain.agents import initialize_agent
+from dotenv import load_dotenv
+
+# Load environment variables from the .env file
+load_dotenv()
+hf_api_key = os.getenv("HF_TOKEN")
+groq_api_key = os.getenv("GROQ_API_KEY")
 
 # Set environment variables
-os.environ['HF_TOKEN'] = 'hf_ktNAbyGeQrtiGyapmjgKRSicInKelt'
-os.environ['GROQ_API_KEY'] = 'gsk_xeUMIUO3bTbUq8myHJ3gWGdyb3FYSaon7weqlh1BE3QD835Z'
+if not hf_api_key :
+    raise ValueError("HF_TOKEN is not set. Please add it to your .env file.")
+else:
+    os.environ['HF_TOKEN'] = hf_api_key
+
+if not groq_api_key :
+    raise ValueError("GROQ_API_KEY is not set. Please add it to your .env file.")
+
 
 # Define embedding model
 model_name = 'sentence-transformers/all-mpnet-base-v2'
@@ -33,7 +45,7 @@ persist_dir = "chroma_data"
 
 # Chat completion LLM
 llm = ChatGroq(
-    groq_api_key=os.environ.get("GROQ_API_KEY"),
+    groq_api_key=groq_api_key,
     model="mixtral-8x7b-32768",
     temperature=0,
     max_tokens=None,
